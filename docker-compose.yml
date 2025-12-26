@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx-lb
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - api-gateway-1
+      - api-gateway-2
+    networks:
+      - microservices-network
+
+  api-gateway-1:
+    build: ./api-gateway
+    container_name: api-gateway-1
+    ports:
+      - "3000:3000" # ✅ API Gateway
+    depends_on:
+      - auth-service
+      - product-service
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-network
+
+  api-gateway-2:
+    build: ./api-gateway
+    container_name: api-gateway-2
+    ports:
+      - "3001:3000" # (optional)
+    depends_on:
+      - auth-service
+      - product-service
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-network
+
+  auth-service:
+    build: ./services/AuthServices
+    container_name: auth-service
+    ports:
+      - "5000:5000" # ✅ Auth Service
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-network
+
+  product-service:
+    build: ./services/ProductServices
+    container_name: product-service
+    ports:
+      - "6000:6000" # ✅ Product Service
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - microservices-network
+
+networks:
+  microservices-network:
+    driver: bridge
+
+volumes:
+  redis-data:
