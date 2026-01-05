@@ -20,7 +20,6 @@ export default class AuthService {
     try {
       const zod = CreateAuthSchema.parse(req);
       doc = await this.authModel.create(zod);
-      console.log("Created doc:", doc);
       if (doc) {
         await this.clearAuthEmailCache("auth:user:email:*");
         await redis.del(`auth:user:email:${req.email}`);
@@ -38,7 +37,6 @@ export default class AuthService {
     let doc = {};
     try {
       const cacheKey = `auth:user:email:${req.email}`;
-      console.log("Userr get");
       // 1️⃣ Check cache
       const cached = await redis.get(cacheKey);
       if (cached) {

@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { authProxy, productProxy } from "./proxy/authProxy";
-import { rateLimiter } from "./middleware/rateLimiter";
+import { leakyBucketRateLimiter } from "./middleware/rateLimiter";
 import os from "os";
 dotenv.config();
 
@@ -15,8 +15,8 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
   console.log("Starting API Gateway");
-  app.use("/auth", rateLimiter(20, 60), authProxy);
-  app.use("/product", rateLimiter(20, 60), productProxy);
+  app.use("/auth", leakyBucketRateLimiter(20, 60), authProxy);
+  app.use("/product", leakyBucketRateLimiter(20, 60), productProxy);
   app.get("/health", (req, res) => {
     res.json({
       service: "api-gateway",

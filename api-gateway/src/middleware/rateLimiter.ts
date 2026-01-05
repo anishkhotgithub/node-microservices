@@ -2,40 +2,56 @@ import { Request, Response, NextFunction } from "express";
 import { redis } from "../redis/redisClient";
 
 /**
- * Sliding window rate limiter
- * @param maxRequests number of requests
- * @param windowSeconds time window in seconds
+ * Leaky Bucket Rate Limiter
+ * @param maxRequests Bucket capacity
+ * @param windowSeconds Time window in seconds (defines leak rate)
  */
-export const rateLimiter = (maxRequests: number, windowSeconds: number) => {
+export const leakyBucketRateLimiter = (
+  maxRequests: number,
+  windowSeconds: number
+) => {
+  const leakRate = maxRequests / windowSeconds; // requests per second
+
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const identifier =
         req.ip || req.headers["x-forwarded-for"] || "anonymous";
 
-      const key = `rate:${identifier}:${req.path}`;
+      const key = `leaky:${identifier}:${req.path}`;
       const now = Date.now();
 
-      // Use sorted set
-      await redis.zadd(key, now, now.toString());
+      // Get current bucket state
+      const data = await redis.hgetall(key);
 
-      // Remove old requests
-      await redis.zremrangebyscore(key, 0, now - windowSeconds * 1000);
+      const last = data.last ? Number(data.last) : now;
+      const water = data.water ? Number(data.water) : 0;
 
-      // Count current requests
-      const requestCount = await redis.zcard(key);
-      // Set TTL (important)
-      await redis.expire(key, windowSeconds);
+      // Calculate leaked water
+      const elapsedSeconds = (now - last) / 1000;
+      const leaked = elapsedSeconds * leakRate;
 
-      if (requestCount > maxRequests) {
+      // Update water level
+      const currentWater = Math.max(0, water - leaked) + 1;
+
+      if (currentWater > maxRequests) {
         return res.status(429).json({
           message: "Too many requests. Please try again later.",
         });
       }
 
+      // Save new state
+      await redis.hmset(key, {
+        water: currentWater.toString(),
+        last: now.toString(),
+      });
+
+      // Set TTL slightly larger than window
+      await redis.expire(key, windowSeconds * 2);
+
       next();
     } catch (err) {
-      console.error("Rate limiter error:", err);
-      next(); // Fail-open
+      console.error("Leaky bucket error:", err);
+      next(); // fail-open
     }
   };
 };
